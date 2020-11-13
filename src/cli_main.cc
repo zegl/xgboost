@@ -359,16 +359,122 @@ class CLI {
     CHECK_NE(param_.model_in, CLIParam::kNull) << "Must specify model_in for predict";
     this->ResetLearner({});
 
-    for (std::string line; std::getline(std::cin, line);) {
+    // TODO: Support other sizes? How should we configure this?
+    int input_vector_size = 51;
+    bool run = true;
+
+    // Allocate array used by all predictions
+    float inputs[input_vector_size];
+
+    //
+    auto start = std::chrono::high_resolution_clock::now();
+
+    bool print_timing = false;
+
+    while (run) {
+      for (int i = 0; i < input_vector_size; i++) {
+        if (scanf("%f", &inputs[i]) != 1) {
+          LOG(CONSOLE) << "Unexpected input?";
+          run = false;
+          break;
+        }
+
+        if (i == 0) {
+          start = std::chrono::high_resolution_clock::now();
+        }
+      }
+
+      auto convert0 = std::chrono::high_resolution_clock::now();
+
+      // Convert input data to DMatrix
+      data::DenseAdapter adapter(inputs, 1, input_vector_size);
+      std::shared_ptr<DMatrix> dmat(DMatrix::Create(&adapter, -1, 1));
+
+      if (print_timing) {
+        std::cerr << "convert:" << std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::high_resolution_clock::now() - convert0).count() << '\n';
+      }
+
+      auto predict0 = std::chrono::high_resolution_clock::now();
+
+      // Run prediction
+      HostDeviceVector<bst_float> preds;
+      learner_->Predict(
+          dmat, // Input Dense Matrix
+          false, // output_margin (disabled)
+          &preds, // Output Vector
+          0 // ntree_limit (0 is unlimited)
+      );
+
+      if(print_timing) {
+        std::cerr << "predict:" << std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::high_resolution_clock::now() - predict0).count() << '\n';
+      }
+
+      auto output0 = std::chrono::high_resolution_clock::now();
+
+      for (bst_float p : preds.ConstHostVector()) {
+        std::cout << std::setprecision(std::numeric_limits<bst_float>::max_digits10) << p
+                  << ' ';
+      }
+      std::cout << '\n';
+      std::flush(std::cout);
+
+      if( print_timing) {
+        std::cerr << "output:" << std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::high_resolution_clock::now() - output0).count() << '\n';
+
+        // Timing
+        std::cerr << "all:" << std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::high_resolution_clock::now() - start).count() << '\n';
+        std::flush(std::cerr);
+      }
+    }
+    return;
+
+    return;
+
+    std::string line;
+    // line.reserve(1024);
+
+    while (true) {
+      //fgets(&line[0], line.size(), stdin);
+      // cinread_bench(line);
+
+      auto start = std::chrono::high_resolution_clock::now();
+
+      auto parseFloat0 = std::chrono::high_resolution_clock::now();
+
       auto input = parse_floats(line);
+
+      //std::cerr << "parseFloat:" << std::chrono::duration_cast<std::chrono::microseconds>(
+      //    std::chrono::high_resolution_clock::now() - parseFloat0).count() << '\n';
+
+      auto dmat0 = std::chrono::high_resolution_clock::now();
 
       // Convert input data to DMatrix
       data::DenseAdapter adapter(input.data(), 1, input.size());
       std::shared_ptr<DMatrix> dmat(DMatrix::Create(&adapter, -1, 1));
 
+      //std::cerr << "dmat:" << std::chrono::duration_cast<std::chrono::microseconds>(
+      //    std::chrono::high_resolution_clock::now() - dmat0).count() << '\n';
+
+      auto pred0 = std::chrono::high_resolution_clock::now();
+
       // Run prediction
       HostDeviceVector<bst_float> preds;
-      learner_->Predict(dmat, param_.pred_margin, &preds, param_.ntree_limit);
+      learner_->Predict(
+          dmat, // Input Dense Matrix
+          // param_.pred_margin,
+          false, // output_margin (disabled)
+          &preds, // Output Vector
+          // param_.ntree_limit
+          0 // ntree_limit (0 is unlimited)
+      );
+
+      // learner_->InplacePredict(dmat, param_.pred_margin, &preds, param_.ntree_limit);
+      //std::cerr << "pred:" << std::chrono::duration_cast<std::chrono::microseconds>(
+      //    std::chrono::high_resolution_clock::now() - pred0).count() << '\n';
 
       // Write output
       for (bst_float p : preds.ConstHostVector()) {
@@ -377,7 +483,18 @@ class CLI {
       }
       std::cout << '\n';
       std::flush(std::cout);
+
+      auto stop = std::chrono::high_resolution_clock::now();
+
+      auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+
+      //std::cerr << "all:" << duration.count() << '\n';
+      //std::flush(std::cerr);
     }
+  }
+
+  void cinread_bench(std::string &str) {
+    std::cin.read(&str[0], str.size());
   }
 
   // parse_floats parses a space separated string of floats
